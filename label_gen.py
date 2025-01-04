@@ -7,8 +7,9 @@ import csv
 knowledge_path = "info/knowledge.txt"
 demo_path = "info/demo.txt"
 example_path = "info/example.txt"
-output_csv = "output/labels.csv"
-output_txt = "output/labels.txt"
+today = pd.Timestamp("today").strftime("%Y%m%d")
+output_csv = f"output/labels_{today}.csv"
+output_txt = f"output/labels_{today}.txt"
 # wine-labeling-202412
 MY_KEY = "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"
 openai.api_key = MY_KEY
@@ -52,10 +53,11 @@ def suggest_new_categories(knowledge, category_list):
     prompt = (
         f"目前的標籤類別包括：\n\n{', '.join(category_list)}\n\n"
         f"以下是關於葡萄酒的專業知識：\n\n{knowledge}\n\n"
-        "為了達到從各種角度去描述葡萄酒的目的，請根據以上內容建議新的標籤類別。"
+        "為了達到從各種角度去描述葡萄酒的目的，請根據以上內容建議新的標籤類別（新增的標籤類別格式以換行隔開，不應該有其他文字，單傳回傳建議的標籤類別）。"
     )
     response = send_request_to_openai(prompt, max_tokens=200)
     suggested_categories = response.split("\n")
+    print(f"Suggested categories: {suggested_categories}")
     return [cat.strip() for cat in suggested_categories if cat.strip() and cat not in category_list]
 
 def determine_reference_and_number(knowledge, category):
@@ -63,12 +65,11 @@ def determine_reference_and_number(knowledge, category):
     prompt = (
         f"以下是關於葡萄酒的知識：\n\n{knowledge}\n\n"
         f"請針對目前的標籤類別「{category}」決定參考資料應該為何者？\n"
-        "適合參考專業知識，回傳:專業知識；適合參考酒款文案，回傳:酒款文案；"
-        "兩者皆要參考，回傳:All。\n"
-        "請決定該類標籤需生成多少之數量？\n"
-        "格式請回傳如下：\n"
-        "(第一行)參考資料\n"
-        "(第二行)目標數量"
+        "適合參考專業知識，回傳:專業知識；適合參考酒款文案，回傳:酒款文案；兩者皆要參考，回傳:All。\n"
+        "請決定該類標籤需生成多少之數量，所有類別數量應該大於20？\n"
+        "格式請回傳如下（僅會有2行）：\n"
+        "(第一行參考資料）All\n"
+        "(第二行目標數量）50"
     )
     response = send_request_to_openai(prompt, max_tokens=100)
     lines = response.split("\n")
@@ -78,14 +79,15 @@ def determine_reference_and_number(knowledge, category):
     target_number = int(lines[1].strip())
     if reference not in ["專業知識", "酒款文案", "All"]:
         raise ValueError("Invalid reference type")
+    print(f"Suggested reference: {reference}, Target number: {target_number}")
     return reference, target_number
 
 def generate_labels(knowledge, examples, category, num_labels):
     """Generate labels using AI based on knowledge and examples."""
     prompt = (
-        f"以下是關於葡萄酒的知識：\n\n{knowledge}\n\n"
+        f"以下是關於葡萄酒的資訊：\n\n{knowledge}\n\n"
         f"和範例標籤：\n\n{examples}\n\n"
-        f"請根據以上內容為「{category}」生成至少 {num_labels} 個創意標籤。"
+        f"請根據以上內容，為「{category}」生成至少 {num_labels} 個標籤。"
     )
     response = send_request_to_openai(prompt, max_tokens=500)
     return [label.strip() for label in response.split("\n") if label.strip()]
@@ -111,10 +113,12 @@ def main():
     demo_content = read_file(demo_path)
     example_content = read_file(example_path)
 
-    categories = category_list
+    categories = category_list.copy()
     if ADD_CATEGORY:
+        print("Adding new categories...")
         new_categories = suggest_new_categories(knowledge_content, category_list)
         categories.extend(new_categories)
+        print(f"New added categories: {categories}")
 
     for category in categories:
         print(f"Processing category: {category}")
